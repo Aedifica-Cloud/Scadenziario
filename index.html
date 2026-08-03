@@ -26,10 +26,6 @@
   .tabs button:hover{color:var(--txt)}
   .tabs button.active{color:var(--txt);border-bottom-color:var(--accent)}
   .tab-pane{display:none}.tab-pane.active{display:block}
-  .subtabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap}
-  .subtabs button{background:transparent;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer}
-  .subtabs button:hover{color:var(--txt)}
-  .subtabs button.active{color:var(--txt);border-bottom-color:var(--accent2)}
 
   /* Boot / loader */
   #boot{max-width:680px;margin:8vh auto 0;text-align:center}
@@ -205,17 +201,17 @@
   <div class="tab-pane active" id="pane-load">
     <section class="card" style="margin-bottom:16px">
       <h3>📥 Caricamento dati</h3>
-      <p class="muted" style="margin:6px 0 16px;font-size:13px">I titoli Aedifica, i clienti (SAL) e le altre società del gruppo si caricano già da soli all'avvio dal foglio Google. Carica qui solo il <b>Conto fornitori</b> (per i bonifici a 45gg) o un file Excel per forzare un aggiornamento manuale.</p>
+      <p class="muted" style="margin:6px 0 16px;font-size:13px">I titoli Aedifica, i clienti (SAL) e le altre società del gruppo si leggono in autonomia dal foglio Google (Drive). Premi "Aggiorna" per ripescare i dati più recenti in qualsiasi momento.</p>
       <div class="grid2">
-        <label class="upbox" id="up_tit">
-          <div class="upico">📄</div>
-          <div class="uptit">1 · Carica file Titoli in Scadenza</div>
-          <div class="upsub" id="up_tit_sub">Il file Excel dei titoli (cambiali, assegni, leasing, finanziamenti, rateizzi, anticipi)</div>
-          <input type="file" id="load_titoli" accept=".xlsx,.xls" hidden>
-        </label>
+        <div class="upbox" id="up_refresh" style="cursor:default">
+          <div class="upico">🔄</div>
+          <div class="uptit">Aggiorna dati da Google Sheet</div>
+          <div class="upsub">Titoli Aedifica · Clienti (SAL) · Nobicom · Bobo · Parking Rent · Facility</div>
+          <button class="btn-upd" id="load_aggiorna" style="margin-top:14px;width:100%">🔄 Aggiorna</button>
+        </div>
         <label class="upbox" id="up_fb">
           <div class="upico">🏦</div>
-          <div class="uptit">2 · Carica conto fornitori (tutti i fornitori)</div>
+          <div class="uptit">Carica conto fornitori (tutti i fornitori)</div>
           <div class="upsub" id="up_fb_sub">Scheda Contabile fornitori · bonifici a +45 gg, esclusi quelli già nei titoli</div>
           <input type="file" id="f_file_conto" accept=".xlsx,.xls" hidden>
         </label>
@@ -385,30 +381,55 @@
     </section>
   </div>
 
-  <!-- GRUPPO (altre società) -->
+  <!-- GRUPPO (altre società, esclusa Aedifica): stessa struttura di Scadenziario Fornitori -->
   <div class="tab-pane" id="pane-gruppo">
-    <div class="subtabs" id="gruppo-subtabs">
-      <button data-g="nobicom" class="active">Nobicom</button>
-      <button data-g="bobo">Bobo</button>
-      <button data-g="parkingrent">Parking Rent</button>
-      <button data-g="facility">Facility</button>
-    </div>
-    <p class="muted" style="margin:-8px 0 16px;font-size:13px">Report in sola lettura dei titoli delle altre società del gruppo, letti automaticamente dal foglio Google. Non entra nel calcolo del Fabbisogno mensile (solo Aedifica).</p>
+    <section class="navbar">
+      <div class="monthnav">
+        <button id="g_prevM">‹</button>
+        <div class="cur"><span id="g_curMonth"></span><small id="g_curScope"></small></div>
+        <button id="g_nextM">›</button>
+      </div>
+      <button class="allbtn" id="g_allBtn">Tutti i mesi</button>
+      <button class="allbtn" id="g_prioBtn">⚑ Vista priorità</button>
+      <div class="actions">
+        <button class="btn-dl" id="g_dlBtn">⬇ CSV</button>
+        <button class="btn-print" id="g_printBtn">🖨 Stampa</button>
+      </div>
+    </section>
     <section class="kpis" id="g_kpis"></section>
     <section class="grid2">
       <div class="card"><h3>Esposizione per mese <span class="tag" id="g_chartScope"></span></h3><div class="chart-box"><canvas id="g_chartMonth"></canvas></div></div>
       <div class="card"><h3>Ripartizione per natura <span class="tag">vista corrente</span></h3><div class="chart-box sm"><canvas id="g_chartNat"></canvas></div></div>
     </section>
-    <div class="tablewrap">
-      <div class="meta"><span id="g_rowCount"></span><span>Totale: <b id="g_rowSum"></b></span></div>
+    <section class="filters">
+      <label style="flex:1">Ricerca<input type="search" id="g_q" placeholder="🔎 Fornitore / descrizione / nota…"></label>
+      <label>Stato (PAGATO)<select id="g_stato"><option value="Da pagare" selected>Solo da pagare</option><option value="Pagato">Solo pagati</option><option value="">Tutti</option></select></label>
+      <label>Natura (selezione multipla)<div class="natchips" id="g_natchips">
+        <button type="button" class="natchip" data-cat="Cambiale">Cambiali</button>
+        <button type="button" class="natchip" data-cat="Assegno">Assegni</button>
+        <button type="button" class="natchip" data-cat="Addebito">Addebiti</button>
+        <button type="button" class="natchip" data-cat="Anticipo">Anticipi</button>
+        <button type="button" class="natchip" data-cat="Altro">Altro</button>
+      </div></label>
+      <label>Società<select id="g_societa"><option value="">Tutte</option></select></label>
+      <button class="btn-reset" id="g_reset">↺ Azzera</button>
+    </section>
+    <div class="tablewrap" id="g_tablewrap">
+      <div class="meta"><span id="g_rowCount"></span><span>Totale vista: <b id="g_rowSum"></b></span></div>
       <div class="scroll"><table>
         <thead><tr>
-          <th>Mese scad.rio</th><th>Scadenza</th><th>Fornitore</th>
-          <th>Descrizione</th><th>Natura</th><th>Stato</th><th class="amt">Importo</th><th>Note</th>
+          <th data-s="mesePag">Mese scad.rio <span class="arr"></span></th>
+          <th data-s="scadenza">Scadenza</th><th data-s="societa">Società</th><th data-s="nome">Fornitore</th>
+          <th data-s="descrizione">Descrizione</th><th data-s="natura">Natura</th>
+          <th data-s="stato">Stato</th><th data-s="importo" class="amt">Importo</th><th data-s="note">Note</th>
         </tr></thead>
         <tbody id="g_tbody"></tbody>
-        <tfoot><tr><td colspan="6">Totale righe visualizzate</td><td class="amt" id="g_footSum"></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="7">Totale righe visualizzate</td><td class="amt" id="g_footSum"></td><td></td></tr></tfoot>
       </table></div>
+    </div>
+    <div id="g_prioWrap" style="display:none">
+      <div class="meta"><span id="g_prioScope"></span><span>Da pagare: <b id="g_prioSum"></b></span></div>
+      <div id="g_prioBody"></div>
     </div>
   </div>
 </div>
@@ -474,7 +495,8 @@ const curYM=TODAY.getFullYear()+'-'+pad(TODAY.getMonth()+1);
 
 let DATA_FORN=[], TITOLI_FORN=[], BONIFICO_FORN=[], FORN_INFRA=[], CONTO_FORN_WB=null, FORN_NESCL=0, DATA_CLI=[], BASE_CLI=[], EXT_CLI=[], ANTICIPI=[], payMonths=[], cliMonths=[], lastSync=null;
 let GRUPPO_DATA={nobicom:[],bobo:[],parkingrent:[],facility:[]};
-const Gst={company:'nobicom'};
+let GRUPPO_ALL=[],gMonths=[];
+const Gst={mode:'mese',mese:null,q:'',stato:'Da pagare',catSel:[],societa:'',sort:'scadenza',dir:1,layout:'tabella'};
 let chF={},chC={},chFab=null;
 const LS_CLI='aedifica_clienti_v1', LS_SALDO='aedifica_saldo_v1', LS_PLAFOND='aedifica_plafond_v1';
 
@@ -744,6 +766,10 @@ function refreshAll(){
   if(!payMonths.includes(Fst.mese))Fst.mese=payMonths.includes(curYM)?curYM:(payMonths[0]||curYM);
   refreshCliSelect();syncCliChips();
   if(!cliMonths.includes(Cst.mese))Cst.mese=cliMonths.includes(curYM)?curYM:(cliMonths[0]||curYM);
+  gMonths=[...new Set(GRUPPO_ALL.map(r=>r.mesePag))].sort();
+  syncGNatChips();
+  fillSel('g_societa',GRUPPO_SHEETS.map(d=>d.label),'Tutte');document.getElementById('g_societa').value=Gst.societa||'';
+  if(!gMonths.includes(Gst.mese))Gst.mese=gMonths.includes(curYM)?curYM:(gMonths[0]||curYM);
   updateInfo();renderForn();renderCli();renderFab();renderFbStatus();renderGruppo();
 }
 function initApp(){
@@ -756,13 +782,6 @@ function initApp(){
   document.getElementById('boot').style.display='none';
   document.getElementById('app').style.display='block';
   refreshAll();
-}
-// estrae le righe del foglio "Titoli in Scadenza_AEDIFICA" da un workbook caricato
-function titoliRowsFromWb(wb){
-  let name=wb.SheetNames.find(n=>{const x=n.toLowerCase();return x.includes('titoli')&&x.includes('scadenza')&&x.includes('aedifica');});
-  if(!name)name=wb.SheetNames.find(n=>{const x=n.toLowerCase();return x.includes('titoli')&&x.includes('scadenza');});
-  if(!name)throw new Error('Nel file non trovo il foglio "Titoli in Scadenza_AEDIFICA".');
-  return XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,blankrows:false});
 }
 function updateInfo(){
   const nPag=DATA_FORN.filter(r=>r.stato==='Pagato').length;
@@ -1039,6 +1058,7 @@ function buildPrintFab(rows){const oggi=TODAY.getDate()+'/'+(TODAY.getMonth()+1)
 function doPrint(which){let html='';
   if(which==='forn')html=buildPrintGeneric(f_sort(f_table()),'mesePag','Scadenziario Fornitori',r=>[fmtDate(r.scadenza),r.nome,r.descrizione||'',r.natura,(r.scaduto?'Scaduto':r.stato),fmtEur(r.importo),r.note||''],['Scadenza','Fornitore','Descrizione','Natura','Stato','Importo','Note']);
   else if(which==='cli')html=buildPrintGeneric(c_sort(c_table()),'mese','Scadenziario Clienti',r=>[fmtDate(r.scadenza),r.nome,r.descrizione||'',r.stato,fmtEur(r.importo),r.note||''],['Data incasso','Cliente','Descrizione','Stato','Importo','Note']);
+  else if(which==='gruppo')html=buildPrintGeneric(g_sort(g_table()),'mesePag','Scadenziario Gruppo (altre società)',r=>[fmtDate(r.scadenza),r.societa,r.nome,r.descrizione||'',r.natura,(r.scaduto?'Scaduto':r.stato),fmtEur(r.importo),r.note||''],['Scadenza','Società','Fornitore','Descrizione','Natura','Stato','Importo','Note']);
   else html=buildPrintFab(fab_rows());
   document.getElementById('printArea').innerHTML=html;window.print();}
 
@@ -1051,20 +1071,23 @@ function csvFab(){const rows=fab_rows();const L=[['Mese','Entrate clienti','Anti
 
 /* ====== AGGIORNA ====== */
 async function aggiornaForn(){
-  const btn=document.getElementById('f_aggiorna');btn.disabled=true;const old=btn.textContent;btn.textContent='⏳ Aggiorno…';
+  const btns=[document.getElementById('f_aggiorna'),document.getElementById('load_aggiorna')].filter(Boolean);
+  btns.forEach(b=>{b.disabled=true;b.dataset.old=b.textContent;b.textContent='⏳ Aggiorno…';});
   try{
     const keepMese=Fst.mese,keepMode=Fst.mode;
     await loadFornitori();
     await loadClienti();
+    await loadGruppo();
     payMonths=[...new Set(DATA_FORN.map(r=>r.mesePag))].sort();
     cliMonths=[...new Set(DATA_CLI.map(r=>r.mese))].sort();
     syncNatChips();
     fillSel('f_forn',[...new Set(DATA_FORN.map(r=>r.nome))].sort((a,b)=>a.localeCompare(b,'it')),'Tutti');document.getElementById('f_forn').value=Fst.forn||'';
     refreshCliSelect();
     Fst.mode=keepMode;Fst.mese=payMonths.includes(keepMese)?keepMese:(payMonths.includes(curYM)?curYM:payMonths[0]);
-    updateInfo();renderForn();renderCli();renderFab();renderFbStatus();
+    updateInfo();renderForn();renderCli();renderFab();renderFbStatus();renderGruppo();
+    const ls=document.getElementById('load_status');if(ls)ls.innerHTML='✅ Aggiornato alle '+pad(new Date().getHours())+':'+pad(new Date().getMinutes())+' · '+TITOLI_FORN.length+' titoli Aedifica · '+DATA_CLI.length+' incassi clienti · gruppo aggiornato.';
   }catch(e){alert('Aggiornamento non riuscito: '+(e.message||e)+'\nControlla la condivisione del foglio.');}
-  btn.disabled=false;btn.textContent=old;
+  btns.forEach(b=>{b.disabled=false;b.textContent=b.dataset.old;});
 }
 async function aggiornaClienti(){
   const btn=document.getElementById('c_aggiorna');btn.disabled=true;const old=btn.textContent;btn.textContent='⏳ Aggiorno…';
@@ -1126,43 +1149,80 @@ async function loadGruppo(){
   await Promise.all(GRUPPO_SHEETS.map(async d=>{
     try{
       const raw=await gvizRows(d.sheet);
-      GRUPPO_DATA[d.key]=(d.tipo==='semplice')?extractGruppoSemplice(raw):extractGruppoStandard(raw);
+      const rows=(d.tipo==='semplice')?extractGruppoSemplice(raw):extractGruppoStandard(raw);
+      rows.forEach(r=>r.societa=d.label);
+      GRUPPO_DATA[d.key]=rows;
     }catch(e){console.warn('Gruppo "'+d.label+'" non caricato:',e);}
   }));
+  GRUPPO_ALL=GRUPPO_SHEETS.flatMap(d=>GRUPPO_DATA[d.key]||[]);
+  GRUPPO_ALL.sort((a,b)=>a.scadenza.localeCompare(b.scadenza)||a.nome.localeCompare(b.nome,'it'));
+}
+/* ====== GRUPPO: rendering identico a Scadenziario Fornitori, ma tutte le società insieme (esclusa Aedifica) ====== */
+function g_search(r){const q=Gst.q.toLowerCase().trim();if(Gst.catSel.length&&!Gst.catSel.includes(r.natura))return false;if(Gst.societa&&r.societa!==Gst.societa)return false;if(q&&!((r.nome+' '+(r.descrizione||'')+' '+(r.note||'')+' '+r.societa).toLowerCase().includes(q)))return false;return true;}
+function syncGNatChips(){document.querySelectorAll('#g_natchips .natchip').forEach(c=>c.classList.toggle('on',Gst.catSel.includes(c.dataset.cat)));}
+function g_apply(){return GRUPPO_ALL.filter(r=>{if(Gst.mode==='mese'&&r.mesePag!==Gst.mese)return false;return g_search(r);});}
+function g_table(){return g_apply().filter(r=>!Gst.stato||r.stato===Gst.stato);}
+function g_sort(rows){const d=Gst.dir,k=Gst.sort;return rows.slice().sort((a,b)=>{if(k==='importo')return(a[k]-b[k])*d;if(k==='mesePag')return((a.mesePag.localeCompare(b.mesePag))||a.scadenza.localeCompare(b.scadenza))*d;return String(a[k]||'').localeCompare(String(b[k]||''),'it')*d;});}
+const G_CAT_ORDER=['Cambiale','Assegno','Addebito','Anticipo','Altro'];
+const G_CAT_META={'Cambiale':{cls:'c-camb',ico:'🟧',lbl:'Cambiali'},'Assegno':{cls:'c-asse',ico:'🟦',lbl:'Assegni'},'Addebito':{cls:'c-add',ico:'🟥',lbl:'Addebiti'},'Anticipo':{cls:'c-ant',ico:'⬜',lbl:'Anticipi'},'Altro':{cls:'c-ant',ico:'⬜',lbl:'Altro'}};
+function renderPrioGruppo(view){
+  const dp=view.filter(r=>r.stato==='Da pagare');
+  let html='',tot=0;
+  G_CAT_ORDER.forEach(cat=>{
+    const items=dp.filter(r=>r.natura===cat);if(!items.length)return;
+    const meta=G_CAT_META[cat];
+    const byF={};items.forEach(r=>{const key=r.societa+'|'+r.nome;const g=byF[key]||(byF[key]={societa:r.societa,nome:r.nome,imp:0,n:0,scaduto:false,first:r.scadenza});g.imp+=r.importo;g.n++;if(r.scaduto)g.scaduto=true;if(r.scadenza<g.first)g.first=r.scadenza;});
+    const groups=Object.values(byF).sort((a,b)=>((b.scaduto?1:0)-(a.scaduto?1:0))||b.imp-a.imp);
+    const st=items.reduce((s,r)=>s+r.importo,0);tot+=st;
+    html+='<div class="prioblock '+meta.cls+'"><div class="priohead"><span>'+meta.ico+' '+meta.lbl+'</span><span class="priotot">'+fmtEur(st)+' · '+groups.length+' voci</span></div>';
+    html+=groups.map(g=>'<div class="prioitem'+(g.scaduto?' late':'')+'"><span class="pi-d">'+fmtDate(g.first)+(g.scaduto?' ⚠':'')+'</span><span class="pi-n">'+g.societa+' — '+g.nome+(g.n>1?' <small class="muted">('+g.n+' titoli)</small>':'')+'</span><span class="pi-a">'+fmtEur(g.imp)+'</span></div>').join('');
+    html+='</div>';
+  });
+  document.getElementById('g_prioBody').innerHTML=html||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Nessun titolo da pagare in questa vista.</div>';
+  document.getElementById('g_prioScope').innerHTML='<b>'+dp.length+'</b> titoli da pagare · '+(Gst.mode==='mese'?ymLabel(Gst.mese):'tutti i mesi');
+  document.getElementById('g_prioSum').textContent=fmtEur(tot);
 }
 let gChM=null,gChN=null;
 function renderGruppo(){
-  const pane=document.getElementById('pane-gruppo');if(!pane)return;
-  const rows=(GRUPPO_DATA[Gst.company]||[]).slice();
-  const dp=rows.filter(r=>r.stato==='Da pagare').reduce((s,r)=>s+r.importo,0);
-  const sc=rows.filter(r=>r.scaduto).reduce((s,r)=>s+r.importo,0);
-  const pg=rows.filter(r=>r.stato==='Pagato').reduce((s,r)=>s+r.importo,0);
-  const def=GRUPPO_SHEETS.find(d=>d.key===Gst.company);
+  if(!document.getElementById('pane-gruppo'))return;
+  const view=g_apply(),rows=g_sort(g_table());
+  if(Gst.mode==='mese'){document.getElementById('g_curMonth').textContent=gMonths.length?ymLabel(Gst.mese):'—';document.getElementById('g_curScope').textContent='da pagare: '+fmtEur0(view.filter(r=>r.stato==='Da pagare').reduce((s,r)=>s+r.importo,0));document.getElementById('g_allBtn').classList.remove('active');}
+  else{document.getElementById('g_curMonth').textContent='Tutti i mesi';document.getElementById('g_curScope').textContent=gMonths.length+' mesi';document.getElementById('g_allBtn').classList.add('active');}
+  const dp=view.filter(r=>r.stato==='Da pagare').reduce((s,r)=>s+r.importo,0),pg=view.filter(r=>r.stato==='Pagato').reduce((s,r)=>s+r.importo,0),sc=view.filter(r=>r.scaduto).reduce((s,r)=>s+r.importo,0);
+  const scope=Gst.mode==='mese'?ymLabel(Gst.mese):'tutti i mesi';
   kpiHTML('g_kpis',[
-    {lbl:'Da pagare · '+(def?def.label:''),val:fmtEur0(dp),sub:rows.filter(r=>r.stato==='Da pagare').length+' titoli',cls:'amber'},
-    {lbl:'Scaduti non pagati',val:fmtEur0(sc),sub:rows.filter(r=>r.scaduto).length+' oltre termine',cls:'red'},
-    {lbl:'Già pagato',val:fmtEur0(pg),sub:rows.filter(r=>r.stato==='Pagato').length+' saldati',cls:'green'},
-    {lbl:'Titoli totali',val:rows.length,sub:new Set(rows.map(r=>r.nome)).size+' fornitori',cls:'blue'}]);
+    {lbl:'Da pagare · '+scope,val:fmtEur0(dp),sub:view.filter(r=>r.stato==='Da pagare').length+' titoli',cls:'amber'},
+    {lbl:'Scaduti non pagati',val:fmtEur0(sc),sub:view.filter(r=>r.scaduto).length+' oltre termine',cls:'red'},
+    {lbl:'Già pagato',val:fmtEur0(pg),sub:view.filter(r=>r.stato==='Pagato').length+' saldati',cls:'green'},
+    {lbl:'In tabella',val:rows.length,sub:new Set(view.map(r=>r.societa)).size+' società',cls:'blue'}]);
   const tb=document.getElementById('g_tbody');
   tb.innerHTML=rows.length?rows.map(r=>{const st=r.scaduto?'late':(r.stato==='Pagato'?'ok':'wait');const stt=r.scaduto?'Scaduto':r.stato;
-    return '<tr><td><b>'+ymLabel(r.mesePag)+'</b></td><td>'+fmtDate(r.scadenza)+'</td><td>'+r.nome+'</td><td class="muted">'+(r.descrizione||'')+'</td><td><span class="nat"><span class="natdot '+natDot(r.natura)+'"></span>'+r.natura+'</span></td><td><span class="pill '+st+'">'+stt+'</span></td><td class="amt">'+fmtEur(r.importo)+'</td><td class="muted">'+(r.note||'')+'</td></tr>';
-  }).join(''):'<tr><td colspan="8" class="empty">Nessun titolo caricato per questa società (controlla la condivisione del foglio "'+(def?def.sheet:'')+'").</td></tr>';
+    return '<tr><td><b>'+ymLabel(r.mesePag)+'</b></td><td>'+fmtDate(r.scadenza)+'</td><td>'+r.societa+'</td><td>'+r.nome+'</td><td class="muted">'+(r.descrizione||'')+'</td><td><span class="nat"><span class="natdot '+natDot(r.natura)+'"></span>'+r.natura+'</span></td><td><span class="pill '+st+'">'+stt+'</span></td><td class="amt">'+fmtEur(r.importo)+'</td><td class="muted">'+(r.note||'')+'</td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty">Nessun titolo.</td></tr>';
   document.getElementById('g_rowCount').innerHTML='<b>'+rows.length+'</b> titoli';
   const tot=rows.reduce((s,r)=>s+r.importo,0);
   document.getElementById('g_rowSum').textContent=fmtEur(tot);document.getElementById('g_footSum').textContent=fmtEur(tot);
-  const byM={};rows.forEach(r=>{byM[r.mesePag]=byM[r.mesePag]||{dp:0,pg:0};if(r.stato==='Pagato')byM[r.mesePag].pg+=r.importo;else byM[r.mesePag].dp+=r.importo;});
-  const labels=Object.keys(byM).sort();
+  arrows('pane-gruppo',Gst);
+  const byM={};GRUPPO_ALL.filter(g_search).forEach(r=>{byM[r.mesePag]=byM[r.mesePag]||{dp:0,pg:0};if(r.stato==='Pagato')byM[r.mesePag].pg+=r.importo;else byM[r.mesePag].dp+=r.importo;});
+  let labels=Object.keys(byM).sort();if(Gst.mode==='mese'){const i=labels.indexOf(Gst.mese);labels=labels.slice(Math.max(0,i-1),Math.max(0,i-1)+12);}else if(labels.length>18)labels=labels.slice(0,18);
   document.getElementById('g_chartScope').textContent=labels.length?(ymLabel(labels[0])+' → '+ymLabel(labels[labels.length-1])):'';
   if(gChM)gChM.destroy();
   gChM=new Chart(document.getElementById('g_chartMonth'),{type:'bar',data:{labels:labels.map(ymShort),datasets:[
-    {label:'Da pagare',data:labels.map(m=>Math.round(byM[m].dp)),backgroundColor:'#f59e0b'},
+    {label:'Da pagare',data:labels.map(m=>Math.round(byM[m].dp)),backgroundColor:labels.map(m=>m===Gst.mese&&Gst.mode==='mese'?'#fbbf24':'#f59e0b')},
     {label:'Pagato',data:labels.map(m=>Math.round(byM[m].pg)),backgroundColor:'#22c55e'}]},
-    options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true,ticks:{color:'#8aa0b6'},grid:{display:false}},y:{stacked:true,ticks:{color:'#8aa0b6',callback:v=>'€'+(v/1000)+'k'},grid:{color:'#27384c'}}},plugins:{legend:{labels:{color:'#e8eef5'}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmtEur(c.raw)}}}}});
-  const byN={};rows.forEach(r=>byN[r.natura]=(byN[r.natura]||0)+r.importo);
+    options:{responsive:true,maintainAspectRatio:false,onClick:(e,el)=>{if(el.length){Gst.mode='mese';Gst.mese=labels[el[0].index];renderGruppo();}},scales:{x:{stacked:true,ticks:{color:'#8aa0b6'},grid:{display:false}},y:{stacked:true,ticks:{color:'#8aa0b6',callback:v=>'€'+(v/1000)+'k'},grid:{color:'#27384c'}}},plugins:{legend:{labels:{color:'#e8eef5'}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmtEur(c.raw)}}}}});
+  const byN={};view.forEach(r=>byN[r.natura]=(byN[r.natura]||0)+r.importo);
   if(gChN)gChN.destroy();
   gChN=new Chart(document.getElementById('g_chartNat'),{type:'doughnut',data:{labels:Object.keys(byN),datasets:[{data:Object.values(byN).map(x=>Math.round(x)),backgroundColor:Object.keys(byN).map(n=>({'Cambiale':'#a78bfa','Assegno':'#22d3ee','Addebito':'#ef4444','Anticipo':'#64748b'}[n]||'#3b82f6')),borderColor:'#17212f',borderWidth:2}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#e8eef5',padding:12,font:{size:11}}},tooltip:{callbacks:{label:c=>c.label+': '+fmtEur(c.raw)}}}}});
+  const prio=Gst.layout==='prio';
+  document.getElementById('g_tablewrap').style.display=prio?'none':'';
+  document.getElementById('g_prioWrap').style.display=prio?'block':'none';
+  document.getElementById('g_prioBtn').classList.toggle('active',prio);
+  document.getElementById('g_prioBtn').textContent=prio?'☰ Vista tabella':'⚑ Vista priorità';
+  if(prio)renderPrioGruppo(view);
 }
+function csvGruppo(){const rows=g_sort(g_table());const L=[['Mese scadenziario','Scadenza','Società','Fornitore','Descrizione','Natura','Stato','Importo','Note'].map(esc).join(';')];rows.forEach(r=>L.push([ymLabel(r.mesePag),fmtDate(r.scadenza),r.societa,r.nome,r.descrizione,r.natura,(r.scaduto?'Scaduto':r.stato),String(r.importo).replace('.',','),r.note].map(esc).join(';')));L.push(['','','','','','','TOTALE',String(round2(rows.reduce((s,r)=>s+r.importo,0))).replace('.',','),''].map(esc).join(';'));dl('Gruppo_'+(Gst.mode==='mese'?Gst.mese:'tutto')+'.csv',L);}
 
 /* ====== EVENTI ====== */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
@@ -1170,10 +1230,17 @@ document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('pane-'+b.dataset.tab).classList.add('active');
 }));
-document.querySelectorAll('#gruppo-subtabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('#gruppo-subtabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
-  Gst.company=b.dataset.g;renderGruppo();
-}));
+document.getElementById('g_prevM').onclick=()=>{const i=gMonths.indexOf(Gst.mese);if(Gst.mode!=='mese')Gst.mode='mese';else if(i>0)Gst.mese=gMonths[i-1];renderGruppo();};
+document.getElementById('g_nextM').onclick=()=>{const i=gMonths.indexOf(Gst.mese);if(Gst.mode!=='mese')Gst.mode='mese';else if(i<gMonths.length-1)Gst.mese=gMonths[i+1];renderGruppo();};
+document.getElementById('g_allBtn').onclick=()=>{Gst.mode=Gst.mode==='tutto'?'mese':'tutto';renderGruppo();};
+document.getElementById('g_prioBtn').onclick=()=>{Gst.layout=Gst.layout==='prio'?'tabella':'prio';renderGruppo();};
+document.getElementById('g_q').addEventListener('input',e=>{Gst.q=e.target.value;renderGruppo();});
+document.getElementById('g_stato').addEventListener('change',e=>{Gst.stato=e.target.value;renderGruppo();});
+document.querySelectorAll('#g_natchips .natchip').forEach(c=>c.addEventListener('click',()=>{const n=c.dataset.cat;const i=Gst.catSel.indexOf(n);if(i>=0)Gst.catSel.splice(i,1);else Gst.catSel.push(n);syncGNatChips();renderGruppo();}));
+document.getElementById('g_societa').addEventListener('change',e=>{Gst.societa=e.target.value;renderGruppo();});
+document.getElementById('g_reset').onclick=()=>{Object.assign(Gst,{q:'',stato:'Da pagare',catSel:[],societa:''});document.getElementById('g_q').value='';document.getElementById('g_stato').value='Da pagare';document.getElementById('g_societa').value='';syncGNatChips();renderGruppo();};
+document.getElementById('g_dlBtn').onclick=csvGruppo;document.getElementById('g_printBtn').onclick=()=>doPrint('gruppo');
+document.querySelectorAll('#pane-gruppo thead th[data-s]').forEach(th=>th.addEventListener('click',()=>{const s=th.dataset.s;if(Gst.sort===s)Gst.dir*=-1;else{Gst.sort=s;Gst.dir=(s==='importo')?-1:1;}renderGruppo();}));
 document.getElementById('drop').addEventListener('click',()=>document.getElementById('fileInput').click());
 document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.target.files[0]));
 document.getElementById('f_aggiorna').onclick=aggiornaForn;
@@ -1286,17 +1353,8 @@ function renderFbStatus(){
   if(!TITOLI_FORN.length){el.innerHTML='⚠ <b>Carica prima il file dei Titoli</b>: poi i bonifici si ricalcolano ed escludono quelli già nei titoli.';return;}
   el.innerHTML='Fornitori a bonifico: <b>'+new Set(BONIFICO_FORN.map(r=>r.nome)).size+'</b> ('+BONIFICO_FORN.length+' scadenze · '+fmtEur0(totB)+') &nbsp;·&nbsp; esclusi (già nei titoli): <b>'+FORN_NESCL+'</b> &nbsp;·&nbsp; infragruppo a parte: <b>'+FORN_INFRA.length+'</b>'+(FORN_INFRA.length?(' ('+fmtEur0(totI)+'): '+FORN_INFRA.map(x=>x.nome).join(', ')):'');
 }
-// UPLOAD 1 · file Titoli in Scadenza
-document.getElementById('load_titoli').addEventListener('change',e=>{const f=e.target.files[0];if(f)readXlsx(f,wb=>{try{
-  const raw=titoliRowsFromWb(wb);
-  TITOLI_FORN=extractForn(null,raw);ANTICIPI=extractAnticipi(raw);lastSync=new Date();
-  applyForn();applyCli();   // gli anticipi fattura confluiscono anche tra i clienti (entrata al rilascio)
-  document.getElementById('up_tit').classList.add('done');
-  document.getElementById('up_tit_sub').textContent='✓ '+f.name+' · '+TITOLI_FORN.length+' titoli';
-  document.getElementById('load_status').innerHTML='✅ Titoli: <b>'+TITOLI_FORN.length+'</b> ('+new Set(TITOLI_FORN.map(r=>r.nome)).size+' fornitori). Vai su “Scadenziario Fornitori”.';
-  refreshAll();showTab('forn');
-}catch(ex){alert(ex.message||ex);}});});
-// UPLOAD 2 · conto fornitori (bonifici)
+document.getElementById('load_aggiorna').addEventListener('click',aggiornaForn);
+// UPLOAD · conto fornitori (bonifici)
 document.getElementById('f_file_conto').addEventListener('change',e=>{const f=e.target.files[0];if(f)readXlsx(f,wb=>{try{
   CONTO_FORN_WB=wb;
   document.getElementById('up_fb').classList.add('done');document.getElementById('up_fb_sub').textContent='✓ '+f.name;
