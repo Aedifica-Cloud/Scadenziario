@@ -152,6 +152,7 @@
   .prioblock.c-camb{border-left-color:#f59e0b}.prioblock.c-camb .priohead{background:rgba(245,158,11,.14);color:#fcd34d}
   .prioblock.c-fatt{border-left-color:#3b82f6}.prioblock.c-fatt .priohead{background:rgba(59,130,246,.14);color:#93c5fd}
   .prioblock.c-ant{border-left-color:#64748b}.prioblock.c-ant .priohead{background:rgba(100,116,139,.12);color:#cbd5e1}
+  .prioblock.c-pago{border-left-color:#eab308}.prioblock.c-pago .priohead{background:rgba(234,179,8,.14);color:#fde047}
   .prioitem{display:grid;grid-template-columns:120px 1fr auto;gap:12px;align-items:center;padding:10px 16px;border-top:1px solid var(--line);font-size:13.5px}
   .prioitem .pi-d{color:var(--muted);font-variant-numeric:tabular-nums}
   .prioitem .pi-n{font-weight:600}
@@ -248,10 +249,9 @@
       <label>Stato (PAGATO)<select id="f_stato"><option value="Da pagare" selected>Solo da pagare</option><option value="Pagato">Solo pagati</option><option value="">Tutti</option></select></label>
       <label>Categoria (selezione multipla)<div class="natchips" id="f_natchips">
         <button type="button" class="natchip" data-cat="Assegno">Assegni</button>
-        <button type="button" class="natchip" data-cat="Addebito">Addebiti</button>
         <button type="button" class="natchip" data-cat="Cambiale">Cambiali</button>
-        <button type="button" class="natchip" data-cat="Fatt. scadute">Fatt. scadute</button>
-        <button type="button" class="natchip" data-cat="Anticipo">Anticipi</button>
+        <button type="button" class="natchip" data-cat="Addebito">Addebiti</button>
+        <button type="button" class="natchip" data-cat="Pago PA">Pago PA</button>
       </div></label>
       <label>Fornitore<select id="f_forn"><option value="">Tutti</option></select></label>
       <button class="btn-reset" id="f_reset">↺ Azzera</button>
@@ -441,6 +441,18 @@
 const SHEET_ID='1q28pzYpWkppcsoXltpSE1hLj0g0NFlbFcWGoRKfPWBc';
 const SHEET_FORN='Dati_Scadenziario';
 const SHEET_PAGATO='SCADENZIARIO_Aedifica';
+// Cambiali ricevute da una società infragruppo (Nobicom/Bobo/Parking Rent/Facility) e girate a terzi
+// (Finindustrial/Marican): restano a carico della società infragruppo che le ha ricevute, non di Aedifica
+// (Aedifica ha solo fatto da tramite). Le cambiali ricevute da soggetti esterni (es. LA.RA, LORY) sono escluse.
+const SHEET_TITOLI_GIRATI_AEDIFICA='Titoli girati_AEDIFICA';
+function girateCompanyKey(nome){
+  const n=norm(nome);
+  if(/NOBICOM/.test(n))return 'nobicom';
+  if(/BOBO/.test(n))return 'bobo';
+  if(/PARKING\s*RENT/.test(n))return 'parkingrent';
+  if(/FACILITY/.test(n))return 'facility';
+  return null;
+}
 // Altre società del gruppo: stessa cartella, sotto-schede a sé; report separato (non entra nel Fabbisogno).
 const GRUPPO_SHEETS=[
   {key:'nobicom',label:'Nobicom',sheet:'SCADENZIARIO_ Nobicom',tipo:'standard'},
@@ -722,6 +734,28 @@ function applyCli(){
 }
 
 /* ====== BOOT ====== */
+function extractTitoliGirati(raw){
+  // Layout: CAMBIALI RICEVUTE | GIRATE | DATA PG | TIPO TITOLO | IMPORTO. Niente colonna PAGATO: stato non tracciato.
+  // Solo le cambiali ricevute da una società infragruppo (girateCompanyKey) restano a carico SUO
+  // (Aedifica ha solo fatto da tramite nella girata a Finindustrial/Marican/ecc).
+  // Le cambiali ricevute da soggetti esterni (es. LA.RA, LORY) sono escluse: girata direttamente a terzi.
+  if(!raw||!raw.length)return [];
+  const hr=findHeader(raw,['girate','importo']);if(hr<0)return [];
+  const H=raw[hr];
+  const cRic=colIndex(H,'cambiali'),cGir=colIndex(H,'girate'),cS=colIndex(H,'data'),cT=colIndex(H,'tipo'),cI=colIndex(H,'importo');
+  const out=[];
+  for(let i=hr+1;i<raw.length;i++){const r=raw[i]||[];
+    const ric=cRic>=0&&r[cRic]?String(r[cRic]).trim():'';
+    const key=girateCompanyKey(ric);if(!key)continue;
+    const gir=cGir>=0&&r[cGir]?String(r[cGir]).trim():'';if(!gir)continue;
+    const iso=cS>=0?toISO(r[cS]):null;if(!iso)continue;const imp=round2(toNum(r[cI]));if(!imp)continue;
+    const tipo=String(cT>=0?(r[cT]||''):'').trim();const TU=tipo.toUpperCase();
+    const natura=TU.includes('CAMB')?'Cambiale':(TU.indexOf('ASS')===0?'Assegno':'Altro');
+    const mesePag=iso.slice(0,7);
+    out.push({key:key,row:{nome:gir,descrizione:'Cambiale girata a '+gir,scadenza:iso,importo:imp,natura:natura,note:'Titoli girati',mesePag:mesePag,stato:'Da pagare',scaduto:(mesePag<curYM)}});
+  }
+  return out;
+}
 async function loadFornitori(){
   // Sorgente titoli: CSV pubblicato (affidabile) se configurato, altrimenti gviz
   let raw;
@@ -811,12 +845,13 @@ function catOf(r){
   if(r.natura==='Cambiale')return 'Cambiale';
   if(r.natura==='Bonifico')return 'Fatt. scadute';
   const t=String(r.descrizione||'').toUpperCase();
-  if(t.includes('ADDEBITO')||t.includes('PAGO PA'))return 'Addebito';
+  if(t.includes('PAGO PA'))return 'Pago PA';
+  if(t.includes('ADDEBITO'))return 'Addebito';
   if(t.includes('ANTICIPO'))return 'Anticipo';
   return 'Altro';
 }
-const CAT_META={'Assegno':{cls:'c-asse',ico:'🟦',lbl:'Assegni'},'Addebito':{cls:'c-add',ico:'🟥',lbl:'Addebiti diretti'},'Cambiale':{cls:'c-camb',ico:'🟧',lbl:'Cambiali'},'Fatt. scadute':{cls:'c-fatt',ico:'🟦',lbl:'Fatture scadute'},'Anticipo':{cls:'c-ant',ico:'⬜',lbl:'Anticipi fattura'},'Altro':{cls:'c-ant',ico:'⬜',lbl:'Altro'}};
-const CAT_ORDER=['Assegno','Addebito','Cambiale','Fatt. scadute','Anticipo','Altro'];
+const CAT_META={'Assegno':{cls:'c-asse',ico:'🟦',lbl:'Assegni'},'Cambiale':{cls:'c-camb',ico:'🟧',lbl:'Cambiali'},'Addebito':{cls:'c-add',ico:'🟥',lbl:'Addebiti diretti'},'Pago PA':{cls:'c-pago',ico:'🟨',lbl:'Pago PA'},'Fatt. scadute':{cls:'c-fatt',ico:'🟦',lbl:'Fatture scadute'},'Anticipo':{cls:'c-ant',ico:'⬜',lbl:'Anticipi fattura'},'Altro':{cls:'c-ant',ico:'⬜',lbl:'Altro'}};
+const CAT_ORDER=['Assegno','Cambiale','Addebito','Pago PA','Fatt. scadute','Anticipo','Altro'];
 function f_search(r){const q=Fst.q.toLowerCase().trim();if(Fst.catSel.length&&!Fst.catSel.includes(catOf(r)))return false;if(Fst.forn&&r.nome!==Fst.forn)return false;if(q&&!((r.nome+' '+r.descrizione+' '+r.note).toLowerCase().includes(q)))return false;return true;}
 function syncNatChips(){document.querySelectorAll('#f_natchips .natchip').forEach(c=>c.classList.toggle('on',Fst.catSel.includes(c.dataset.cat)));}
 function renderPrio(view){
@@ -975,7 +1010,7 @@ function antParams(){
 function antAdv(importo){return round2(importo);}
 function fab_rows(){
   const saldo0=fab_saldo();
-  const usc=DATA_FORN.filter(r=>r.stato==='Da pagare'&&['Assegno','Cambiale','Addebito'].includes(catOf(r))); // SOLO effetti: assegni, cambiali, addebiti diretti
+  const usc=DATA_FORN.filter(r=>r.stato==='Da pagare'&&['Assegno','Cambiale','Addebito','Pago PA'].includes(catOf(r))); // SOLO effetti: assegni, cambiali, addebiti diretti, Pago PA
   const ent=DATA_CLI.filter(r=>!r.incassato&&r.cat!=='Anticipo'&&r.mese!=='9999-99'); // entrate clienti dirette (già nette dell'anticipo); anticipi contati a parte
   const erog=ANTICIPI.filter(a=>a.rilascio&&a.rilascio.slice(0,7)>=curYM);    // anticipi: ENTRATA al rilascio
   const rientri=ANTICIPI.filter(a=>a.nostro&&a.scad);                          // "nostro" → USCITA di cassa alla scadenza
@@ -1154,6 +1189,16 @@ async function loadGruppo(){
       GRUPPO_DATA[d.key]=rows;
     }catch(e){console.warn('Gruppo "'+d.label+'" non caricato:',e);}
   }));
+  // Titoli girati_AEDIFICA: le cambiali ricevute da una società infragruppo restano a SUO carico
+  // (Aedifica ha solo fatto da tramite nella girata a terzi).
+  try{
+    const girateRaw=await gvizRows(SHEET_TITOLI_GIRATI_AEDIFICA);
+    extractTitoliGirati(girateRaw).forEach(({key,row})=>{
+      const def=GRUPPO_SHEETS.find(d=>d.key===key);if(!def)return;
+      row.societa=def.label;
+      GRUPPO_DATA[key]=(GRUPPO_DATA[key]||[]).concat([row]);
+    });
+  }catch(e){console.warn('Titoli girati_AEDIFICA non caricato:',e);}
   GRUPPO_ALL=GRUPPO_SHEETS.flatMap(d=>GRUPPO_DATA[d.key]||[]);
   GRUPPO_ALL.sort((a,b)=>a.scadenza.localeCompare(b.scadenza)||a.nome.localeCompare(b.nome,'it'));
 }
